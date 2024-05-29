@@ -1,0 +1,11 @@
+test.c: In function ‘main’:
+test.c:4:11: warning: implicit declaration of function ‘fork’ [-Wimplicit-function-declaration]
+    4 | if (!(pid=fork())) {
+      |           ^~~~
+test.c:6:1: warning: implicit declaration of function ‘execl’ [-Wimplicit-function-declaration]
+    6 | execl("./gcc", "gcc", "hw3.c", "-c", "hw3", NULL);
+      | ^~~~~
+test.c:6:1: warning: incompatible implicit declaration of built-in function ‘execl’ [-Wbuiltin-declaration-mismatch]
+test.c:10:1: warning: implicit declaration of function ‘waitpid’ [-Wimplicit-function-declaration]
+   10 | waitpid(pid, NULL, 0);
+      | ^~~~~~~
