@@ -22,11 +22,6 @@ typedef struct {
     void **heap_array;
 } heap_t;
 
-typedef struct {
-    int num_filenames;
-    char **filenames;
-} filename_t;
-
 char **read_arguments (char *filename, char *progname) {
     int fd, size, argc;
     char *arg_str = NULL, **argv = NULL, buffer[BUFFER_SIZE + 1], *token = NULL;
@@ -160,9 +155,9 @@ void free_heap (heap_t *heap) {
     free(heap);
 }
 
-char **get_filenames (heap_t *heap, char *progname) {
+char **get_filenames (heap_t *heap, char *progname, char *argv[]) {
     char **filenames = NULL;
-    const char SOURCE_EXT[] = ".c", ARG_EXT[] = ".args", IN_EXT[] = ".in", OUT_EXT[] = ".out", ERROR_EXT[] = ".err";
+    const char SOURCE_EXT[] = ".c", ERROR_EXT[] = ".err";
 
     if (progname == NULL) {
         return(NULL);
@@ -174,21 +169,10 @@ char **get_filenames (heap_t *heap, char *progname) {
     filenames[SOURCE] = (char *)realloc(filenames[SOURCE], (strlen(filenames[SOURCE]) + sizeof(SOURCE_EXT)) * sizeof(char));
     add_heap(heap, filenames[SOURCE]);
     filenames[SOURCE] = strcat(filenames[SOURCE], SOURCE_EXT);
-
-    filenames[ARGUMENTS] = strdup(progname);
-    filenames[ARGUMENTS] = (char *)realloc(filenames[ARGUMENTS], (strlen(filenames[ARGUMENTS]) + sizeof(ARG_EXT)) * sizeof(char));
-    add_heap(heap, filenames[ARGUMENTS]);
-    filenames[ARGUMENTS] = strcat(filenames[ARGUMENTS], ARG_EXT);
-
-    filenames[INPUT] = strdup(progname);
-    filenames[INPUT] = (char *)realloc(filenames[INPUT], (strlen(filenames[INPUT]) + sizeof(IN_EXT)) * sizeof(char));
-    add_heap(heap, filenames[INPUT]);
-    filenames[INPUT] = strcat(filenames[INPUT], IN_EXT);
-
-    filenames[OUTPUT] = strdup(progname);
-    filenames[OUTPUT] = (char *)realloc(filenames[OUTPUT], (strlen(filenames[OUTPUT]) + sizeof(OUT_EXT)) * sizeof(char));
-    add_heap(heap, filenames[3]);
-    filenames[OUTPUT] = strcat(filenames[OUTPUT], OUT_EXT);
+    
+    filenames[ARGUMENTS] = argv[2];
+    filenames[INPUT] = argv[3];
+    filenames[OUTPUT] = argv[4];
 
     filenames[ERROR] = strdup(progname);
     filenames[ERROR] = (char *)realloc(filenames[ERROR], (strlen(filenames[ERROR]) + sizeof(ERROR_EXT)) * sizeof(char));
@@ -212,7 +196,7 @@ int main (int argc, char *argv[]) {
 
     progname = get_progname(argv[1]);
     add_heap(heap, progname);
-    filenames = get_filenames(heap, progname);
+    filenames = get_filenames(heap, progname, argv);
 
     p1 = fork();
 
@@ -249,20 +233,21 @@ int main (int argc, char *argv[]) {
     if (p2 == 0) {
         fd = open(filenames[INPUT], O_RDONLY);
         dup2(fd, STDIN_FILENO);
-        //dup2(STDOUT_FILENO, pipefd[0]);
+        dup2(pipefd[1], STDOUT_FILENO);
         current_dir = (char *)calloc(strlen(progname) + 3, sizeof(char));
         current_dir = strcpy(current_dir, "./");
         current_dir = strcat(current_dir, progname);
         printf("exec %s %s %s\n", current_dir, progname, filenames[ARGUMENTS]);
         execv(current_dir, read_arguments(filenames[ARGUMENTS], progname));
+        close(pipefd[1]);
         exit(0);
     } else if (p2 == -1) {
         printf("Error creating p2.\n");
     } else {
         p3 = fork();
         if (p3 == 0) {
-            dup2(pipefd[1], STDIN_FILENO);
-            execl("./p4diff", "p4diff", NULL);
+            dup2(pipefd[0], STDIN_FILENO);
+            execl("./p4diff", "p4diff", filenames[OUTPUT], NULL);
             exit(0);
         } else if (p3 == -1) {
             printf("Error creating p3.\n");
