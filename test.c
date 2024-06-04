@@ -1,20 +1,36 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <signal.h>
+#include <errno.h>
+#include <string.h>
+#include <sys/time.h>
 
-int main(int argc, char *argv[]) {
-int fd[2]; char c; char str[64];
-pipe(fd);
-if (!fork()) {
-dup2(fd[1], STDOUT_FILENO); /* redirect stdout */
-close(fd[0]); close(fd[1]);
-execl("./add", "add", "123", "456", NULL);
-return(1);
+static void timer_handler (int signal) {
+    printf("Timer went off.\n");
 }
-dup2(fd[0], STDIN_FILENO); /* redirect stdin */
-close(fd[0]); close(fd[1]);
-while (scanf("%63s", str) != EOF) {
-printf("%s\n", str);
-}
-return(0);
+
+int main (void) {
+    int i = 0;
+    struct itimerval timer;
+    struct sigaction action;
+
+    action.sa_handler = timer_handler;
+    sigaction(SIGALRM, &action, NULL);
+
+    timer.it_value.tv_sec = 20;
+    timer.it_value.tv_usec = 0;
+    timer.it_interval.tv_sec = 0;
+    timer.it_interval.tv_usec = 0;
+
+    printf("%d\n", setitimer(ITIMER_REAL, &timer, NULL));
+    printf("%s\n", strerror(errno));
+
+    while (1) {
+        printf("Sleeping... (%d)\n", i);
+        sleep(1);
+        i++;
+    }
+
+    return(0);
 }

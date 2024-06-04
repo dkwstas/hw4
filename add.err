@@ -1,0 +1,4 @@
+add.c: In function ‘main’:
+add.c:6:9: warning: unused variable ‘i’ [-Wunused-variable]
+     int i, numbers[2] = {0};
+         ^

@@ -3,9 +3,12 @@
 #include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <errno.h>
+#include <signal.h>
 #include <sys/wait.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/time.h>
 
 #define BUFFER_SIZE 64
 
@@ -21,6 +24,13 @@ typedef struct {
     int heap_size;
     void **heap_array;
 } heap_t;
+
+static void timer_handler (int signal) {}
+
+/*static void timer_handler (int signal, siginfo_t *info, void *ucontext) {
+    printf("\n\nKilling pid. PID: %d\n\n", info->si_pid);
+    kill(info->si_pid, SIGKILL);
+}*/
 
 char **read_arguments (char *filename, char *progname) {
     int fd, size, argc;
@@ -183,14 +193,18 @@ char **get_filenames (heap_t *heap, char *progname, char *argv[]) {
 }
 
 int main (int argc, char *argv[]) {
-    int fd, p1, p2, p3, warnings, pipefd[2];
+    int fd, p1, p2, p3, warnings, pipefd[2], p2_status = 0, p3_status = 0, timeout = 0;
     char *progname = NULL, *current_dir = NULL, **filenames = NULL;
     heap_t *heap = NULL;
+    struct itimerval timer;
+    struct sigaction action;
 
-    if (argc != 6) {
+    if (argc != 6 || atoi(argv[5]) < 0) {
         printf("Invalid arguments.\n Usage: ./hw4 <progname>.c <progname>.args <progname>.in <progname>.out <timeout>\n");
         return(1);
     }
+
+    timeout = atoi(argv[5]);
 
     init_heap(&heap);
 
@@ -210,7 +224,7 @@ int main (int argc, char *argv[]) {
         dup2(fd, STDERR_FILENO);
         execl("/usr/bin/gcc", "gcc", "-Wall", argv[1], "-o", progname, NULL);
         close(fd);
-        exit(0);
+        exit(errno);
         //dup2(olderr, STDERR_FILENO);
     } else if (p1 == -1) {
         printf("Error creating p1.\n");
@@ -239,25 +253,59 @@ int main (int argc, char *argv[]) {
         current_dir = strcat(current_dir, progname);
         printf("exec %s %s %s\n", current_dir, progname, filenames[ARGUMENTS]);
         execv(current_dir, read_arguments(filenames[ARGUMENTS], progname));
-        close(pipefd[1]);
-        exit(0);
+        close(STDOUT_FILENO);
+        exit(errno);
     } else if (p2 == -1) {
         printf("Error creating p2.\n");
     } else {
         p3 = fork();
         if (p3 == 0) {
             dup2(pipefd[0], STDIN_FILENO);
+            close(pipefd[0]);
+            close(pipefd[1]);
             execl("./p4diff", "p4diff", filenames[OUTPUT], NULL);
-            exit(0);
+            exit(errno);
         } else if (p3 == -1) {
             printf("Error creating p3.\n");
+        } else {
+            timer.it_value.tv_sec = timeout;
+            timer.it_value.tv_usec = 0;
+            timer.it_interval.tv_sec = 0;
+            timer.it_interval.tv_usec = 0;
+
+            printf("%d %d\n", p2, p3);
+
+            //action.sa_flags = SA_SIGINFO;
+            action.sa_handler = timer_handler;
+
+            sigaction(SIGALRM, &action, NULL);
+            setitimer(ITIMER_REAL, &timer, NULL);
+            
+            close(pipefd[0]);
+            close(pipefd[1]);
+
+            //waitpid(p2, NULL, 0);
+            //waitpid(p3, &percentage, 0);
+            //pause();
+            waitpid(p2, &p2_status, WNOHANG);
+
+            printf("==%d", WTERMSIG(p2));
+
+            if (WTERMSIG(p2_status) == SIGSEGV || WTERMSIG(p2_status) == SIGABRT || WTERMSIG(p2_status) == SIGBUS) {
+                printf("pid crashed\n");
+            } else if (!WIFEXITED(p2_status)) {
+                printf("Killed pid(%d)\n", p2);
+                kill(p2, SIGKILL);
+            }
+
+            //waitpid(p2, &p2_status, 0);
+            waitpid(p3, &p3_status, 0);
+
+            printf("\n\nGot: %d\n\n", WEXITSTATUS(p3_status));
+
+            free_heap(heap);
         }
     }
-
-    waitpid(p2, NULL, 0);
-    waitpid(p3, NULL, 0);
-
-    free_heap(heap);
 
     return(0);
 }

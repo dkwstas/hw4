@@ -7,9 +7,18 @@
 #include <math.h>
 
 #define BUFFER_SIZE 64
+#define MAX_SCORE 100
+
+int max (int num_1, int num_2) {
+    if (num_1 >= num_2) {
+        return(num_1);
+    } else {
+        return(num_2);
+    }
+}
 
 int main (int argc, char *argv[]) {
-    int i, fd, stdin_size, file_size, stdin_total_size = 0, file_total_size = 0, similarities = 0, differences = 0, offset = 0;
+    int i, fd, stdin_size, file_size, stdin_total_size = 0, file_total_size = 0, similarities = 0, differences = 0, offset = 0, percentage = 0;
     char *filename = NULL, stdin_buffer[BUFFER_SIZE + 1], file_buffer[BUFFER_SIZE + 1];
 
     if (argc != 2) {
@@ -38,6 +47,7 @@ int main (int argc, char *argv[]) {
         if (file_size < stdin_size) {
             for (i=0; i < file_size; i++) {
                 if (file_buffer[offset + i] == stdin_buffer[i]) {
+                    printf("%c=%c", file_buffer[offset + i], stdin_buffer[i]);
                     similarities++;
                 } else {
                     differences++;
@@ -50,6 +60,7 @@ int main (int argc, char *argv[]) {
         } else if (file_size > stdin_size) {
             for (i=0; i < stdin_size; i++) {
                 if (stdin_buffer[offset + i] == file_buffer[i]) {
+                    printf("%c=%c", stdin_buffer[offset + i], file_buffer[i]);
                     similarities++;
                 } else {
                     differences++;
@@ -60,8 +71,9 @@ int main (int argc, char *argv[]) {
             stdin_total_size += stdin_size;
             printf("STDIN (%d:%d): %s\n", stdin_size, stdin_total_size, stdin_buffer);
         } else {
-            for (i=0; i < BUFFER_SIZE; i++) {
+            for (i=0; i < file_size; i++) {
                 if (stdin_buffer[i] == file_buffer[i]) {
+                    printf("%c=%c", stdin_buffer[i], file_buffer[i]);
                     similarities++;
                 } else {
                     differences++;
@@ -105,5 +117,11 @@ int main (int argc, char *argv[]) {
         stdin_size = read(STDIN_FILENO, stdin_buffer, BUFFER_SIZE);
     }*/
 
-    return(0);
+    if (file_total_size == 0 && stdin_total_size == 0) {
+        return(MAX_SCORE);
+    }
+
+    percentage = (similarities * 100) / max(file_total_size, stdin_total_size);
+
+    return(percentage);
 }
