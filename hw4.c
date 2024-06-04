@@ -27,9 +27,51 @@ typedef struct {
     char **filenames;
 } filename_t;
 
+char **read_arguments (char *filename, char *progname) {
+    int fd, size, argc;
+    char *arg_str = NULL, **argv = NULL, buffer[BUFFER_SIZE + 1], *token = NULL;
+
+    fd = open(filename, O_RDONLY);
+    if (fd == -1) {
+        printf("Could not open file.\n");
+        return(NULL);
+    }
+
+    memset(buffer, '\0', sizeof(buffer));
+
+    arg_str = (char *)malloc(sizeof(char));
+    arg_str = (char *)memset(arg_str, '\0', 1);
+
+    size = read(fd, buffer, BUFFER_SIZE);
+    while (size != 0) {
+        if (strchr(buffer, '\n') != NULL) {
+            size = strchr(buffer, '\n') - buffer;
+        }
+        arg_str = (char *)realloc(arg_str, (strlen(arg_str) + size + 1) * sizeof(char));
+        arg_str = strncat(arg_str, buffer, size);
+        size = read(fd, buffer, BUFFER_SIZE);
+    }
+    arg_str[strlen(arg_str)] = '\0';
+
+    argv = (char **)malloc(sizeof(char *));
+    argv[0] = progname;
+
+    token = strtok(arg_str, " ");
+    for (argc=1; token != NULL; argc++) {
+        argv = (char **)realloc(argv, (argc + 1) * sizeof(char *));
+        argv[argc] = strdup(token);
+        token = strtok(NULL, " ");
+    }
+
+    argv = (char **)realloc(argv, (argc + 1) * sizeof(char *));
+    argv[argc] = NULL;
+    
+    return(argv);
+}
+
 int num_warnings (char *filename) {
     int fd, size, warning_count = 0;
-    char buffer[65];
+    char buffer[BUFFER_SIZE + 1];
     const char *WARNING_STRING = "warning:";
 
     fd = open(filename, O_RDONLY);
@@ -55,7 +97,7 @@ int num_warnings (char *filename) {
 
 int has_error (char *filename) {
     int fd, size;
-    char buffer[65];
+    char buffer[BUFFER_SIZE + 1];
     const char *ERROR_STRING = "error:";
 
     fd = open(filename, O_RDONLY);
@@ -212,7 +254,7 @@ int main (int argc, char *argv[]) {
         current_dir = strcpy(current_dir, "./");
         current_dir = strcat(current_dir, progname);
         printf("exec %s %s %s\n", current_dir, progname, filenames[ARGUMENTS]);
-        execl(current_dir, progname, filenames[ARGUMENTS], NULL);
+        execv(current_dir, read_arguments(filenames[ARGUMENTS], progname));
         exit(0);
     } else if (p2 == -1) {
         printf("Error creating p2.\n");
