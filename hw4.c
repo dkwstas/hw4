@@ -11,6 +11,11 @@
 #include <sys/time.h>
 
 #define BUFFER_SIZE 64
+#define MAX_SCORE 100
+#define WARNING_PENALTY 5
+#define MEMORY_PENALTY 15
+
+#define MAX(A, B) ((A > B) ? A : B)
 
 typedef enum {
     SOURCE,
@@ -20,17 +25,34 @@ typedef enum {
     ERROR
 } filetype_t;
 
+typedef enum {
+    COMPILATION,
+    TERMINATION,
+    DIFFERENCE,
+    MEMORY
+} penalty_t;
+
 typedef struct {
     int heap_size;
     void **heap_array;
 } heap_t;
 
-static void timer_handler (int signal) {}
+static void timer_handler (int signal) {
+    write(STDOUT_FILENO, "\n\nKilling pid\n\n", 16);
+}
 
 /*static void timer_handler (int signal, siginfo_t *info, void *ucontext) {
-    printf("\n\nKilling pid. PID: %d\n\n", info->si_pid);
+    write(STDOUT_FILENO, "\n\nKilling pid\n\n", 16);
     kill(info->si_pid, SIGKILL);
 }*/
+
+void print_score (int penalties[4]) {
+    int total_score = 0;
+
+    total_score = MAX(0, penalties[COMPILATION] + penalties[TERMINATION] + penalties[DIFFERENCE] + penalties[MEMORY]);
+
+    printf("\nCompilation: %d\nTermination: %d\nOutput: %d\nMemory access: %d\nScore: %d\n", penalties[COMPILATION], penalties[TERMINATION], penalties[DIFFERENCE], penalties[MEMORY], total_score);
+}
 
 char **read_arguments (char *filename, char *progname) {
     int fd, size, argc;
@@ -89,8 +111,13 @@ int num_warnings (char *filename) {
 
     size = read(fd, buffer, BUFFER_SIZE);
     while (size != 0) {
-        if (strstr(buffer, WARNING_STRING) != NULL) {
-            warning_count++;
+        if (strchr(buffer, WARNING_STRING[0]) != NULL) {
+            lseek(fd, -(size - (strchr(buffer, WARNING_STRING[0]) - buffer)), SEEK_CUR);
+            size = read(fd, buffer, BUFFER_SIZE);
+            if (strstr(buffer, WARNING_STRING) != NULL) {
+                    warning_count++;
+                    lseek(fd, -size + strlen(WARNING_STRING), SEEK_CUR);
+            }
         }
         size = read(fd, buffer, BUFFER_SIZE);
     }
@@ -115,8 +142,12 @@ int has_error (char *filename) {
 
     size = read(fd, buffer, BUFFER_SIZE);
     while (size != 0) {
-        if (strstr(buffer, ERROR_STRING) != NULL) {
-            return(0);
+        if (strchr(buffer, ERROR_STRING[0]) != NULL) {
+            lseek(fd, -(size - (strchr(buffer, ERROR_STRING[0]) - buffer)), SEEK_CUR);
+            size = read(fd, buffer, BUFFER_SIZE);
+            if (strstr(buffer, ERROR_STRING) != NULL) {
+                return(0);
+            }
         }
         size = read(fd, buffer, BUFFER_SIZE);
     }
@@ -193,7 +224,7 @@ char **get_filenames (heap_t *heap, char *progname, char *argv[]) {
 }
 
 int main (int argc, char *argv[]) {
-    int fd, p1, p2, p3, warnings, pipefd[2], p2_status = 0, p3_status = 0, timeout = 0;
+    int fd, p1, p2, p3, warnings, pipefd[2], p2_status = 0, p3_status = 0, timeout = 0, penalties[4] = { 0 };
     char *progname = NULL, *current_dir = NULL, **filenames = NULL;
     heap_t *heap = NULL;
     struct itimerval timer;
@@ -234,8 +265,11 @@ int main (int argc, char *argv[]) {
 
     if (has_error(filenames[ERROR]) != 0) {
         warnings = num_warnings(filenames[ERROR]);
+        penalties[COMPILATION] = -(warnings * WARNING_PENALTY);
     } else {
-        //ERROR IN *.ERR
+        penalties[COMPILATION] = -MAX_SCORE;
+        print_score(penalties);
+        return(-1);
     }
 
     if (pipe(pipefd) != 0) {
@@ -254,7 +288,7 @@ int main (int argc, char *argv[]) {
         printf("exec %s %s %s\n", current_dir, progname, filenames[ARGUMENTS]);
         execv(current_dir, read_arguments(filenames[ARGUMENTS], progname));
         close(STDOUT_FILENO);
-        exit(errno);
+        return(errno);
     } else if (p2 == -1) {
         printf("Error creating p2.\n");
     } else {
@@ -264,7 +298,7 @@ int main (int argc, char *argv[]) {
             close(pipefd[0]);
             close(pipefd[1]);
             execl("./p4diff", "p4diff", filenames[OUTPUT], NULL);
-            exit(errno);
+            return(errno);
         } else if (p3 == -1) {
             printf("Error creating p3.\n");
         } else {
@@ -273,35 +307,29 @@ int main (int argc, char *argv[]) {
             timer.it_interval.tv_sec = 0;
             timer.it_interval.tv_usec = 0;
 
-            printf("%d %d\n", p2, p3);
-
-            //action.sa_flags = SA_SIGINFO;
             action.sa_handler = timer_handler;
 
             sigaction(SIGALRM, &action, NULL);
             setitimer(ITIMER_REAL, &timer, NULL);
-            
+
             close(pipefd[0]);
             close(pipefd[1]);
 
-            //waitpid(p2, NULL, 0);
-            //waitpid(p3, &percentage, 0);
-            //pause();
-            waitpid(p2, &p2_status, WNOHANG);
-
-            printf("==%d", WTERMSIG(p2));
+            if (waitpid(p2, &p2_status, 0) == -1) {
+                kill(p2, SIGKILL);
+                penalties[TERMINATION] = -MAX_SCORE;
+            }
 
             if (WTERMSIG(p2_status) == SIGSEGV || WTERMSIG(p2_status) == SIGABRT || WTERMSIG(p2_status) == SIGBUS) {
                 printf("pid crashed\n");
-            } else if (!WIFEXITED(p2_status)) {
-                printf("Killed pid(%d)\n", p2);
-                kill(p2, SIGKILL);
+                penalties[MEMORY] = -MEMORY_PENALTY;
             }
 
-            //waitpid(p2, &p2_status, 0);
             waitpid(p3, &p3_status, 0);
 
-            printf("\n\nGot: %d\n\n", WEXITSTATUS(p3_status));
+            penalties[DIFFERENCE] = WEXITSTATUS(p3_status);
+
+            print_score(penalties);
 
             free_heap(heap);
         }

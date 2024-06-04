@@ -3,7 +3,7 @@
 #include <unistd.h>
 
 int main (int argc, char *argv[]) {
-    int i, numbers[2] = {0};
+    int numbers[2] = {0};
 
     //printf("DEBUG:\n Arguments (%d):", argc - 1);
     //for (i=1; i < argc; i++) {
