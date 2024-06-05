@@ -171,8 +171,8 @@ int num_warnings (char *filename) {
                 }
             } else {
                 /*If the warning string is not in one piece in the buffer, copy all the bytes
-                *after w_position in themp buffer, read and add the remaining to the temp buffer
-                */
+                 *after w_position in themp buffer, read and add the remaining to the temp buffer
+                 */
                 strcpy(temp_buffer, w_position);
                 size = read(fd, buffer, BUFFER_SIZE);
                 if (size == -1) {
@@ -235,8 +235,8 @@ int has_error (char *filename) {
                 }
             } else {
                 /*If the error string is not in one piece in the buffer, copy all the bytes
-                *after e_position in temp buffer, read and add the remaining to the temp buffer
-                */
+                 *after e_position in temp buffer, read and add the remaining to the temp buffer
+                 */
                 strcpy(temp_buffer, e_position);
                 size = read(fd, buffer, BUFFER_SIZE);
                 if (size == -1) {
