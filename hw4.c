@@ -38,7 +38,7 @@ typedef struct {
 } heap_t;
 
 static void timer_handler (int signal) {
-    write(STDOUT_FILENO, "\n\nKilling pid\n\n", 16);
+    //write(STDOUT_FILENO, "\n\nKilling pid\n\n", 16);
 }
 
 /*static void timer_handler (int signal, siginfo_t *info, void *ucontext) {
@@ -321,7 +321,7 @@ int main (int argc, char *argv[]) {
             }
 
             if (WTERMSIG(p2_status) == SIGSEGV || WTERMSIG(p2_status) == SIGABRT || WTERMSIG(p2_status) == SIGBUS) {
-                printf("pid crashed\n");
+                //printf("pid crashed\n");
                 penalties[MEMORY] = -MEMORY_PENALTY;
             }
 

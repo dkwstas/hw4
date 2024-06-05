@@ -9,16 +9,11 @@
 #define BUFFER_SIZE 64
 #define MAX_SCORE 100
 
-int max (int num_1, int num_2) {
-    if (num_1 >= num_2) {
-        return(num_1);
-    } else {
-        return(num_2);
-    }
-}
+#define MAX(A, B) ((A > B) ? A : B)
+#define MIN(A, B) ((A < B) ? A : B)
 
 int main (int argc, char *argv[]) {
-    int i, fd, stdin_size, file_size, stdin_total_size = 0, file_total_size = 0, similarities = 0, differences = 0, offset = 0, percentage = 0;
+    int i, fd, stdin_size, file_size, stdin_total_size = 0, file_total_size = 0, similarities = 0, differences = 0, stdin_offset = 0, file_offset = 0, percentage = 0;
     char *filename = NULL, stdin_buffer[BUFFER_SIZE + 1], file_buffer[BUFFER_SIZE + 1];
 
     if (argc != 2) {
@@ -43,42 +38,37 @@ int main (int argc, char *argv[]) {
     stdin_total_size += stdin_size;
     printf("STDIN (%d:%d): %s\n", stdin_size, stdin_total_size, stdin_buffer);
 
-    while ((file_size > 0) && (stdin_size > 0)) {
-        if (file_size < stdin_size) {
-            for (i=0; i < file_size; i++) {
-                if (file_buffer[offset + i] == stdin_buffer[i]) {
-                    printf("%c=%c", file_buffer[offset + i], stdin_buffer[i]);
-                    similarities++;
-                } else {
-                    differences++;
-                }
+    while (file_size > 0 && stdin_size > 0) {
+        printf("\n=====================================\n");
+        for (i=0; i < MIN(file_size - file_offset, stdin_size - stdin_offset); i++) {
+            if (stdin_buffer[stdin_offset + i] == file_buffer[file_offset + i]) {
+                printf("%c=%c", stdin_buffer[stdin_offset + i], file_buffer[file_offset + i]);
+                similarities++;
+            } else {
+                printf("%c!%c", stdin_buffer[stdin_offset + i], file_buffer[file_offset + i]);
+                differences++;
             }
-            offset = file_size;
-            file_size = read(fd, file_buffer, BUFFER_SIZE);
-            file_total_size += file_size;
-            printf("FILEIO (%d:%d): %s\n", file_size, file_total_size, file_buffer);
-        } else if (file_size > stdin_size) {
-            for (i=0; i < stdin_size; i++) {
-                if (stdin_buffer[offset + i] == file_buffer[i]) {
-                    printf("%c=%c", stdin_buffer[offset + i], file_buffer[i]);
-                    similarities++;
-                } else {
-                    differences++;
-                }
-            }
-            offset = stdin_size;
+        }
+        printf("\n=====================================\n");
+
+        if ((file_size - file_offset) > (stdin_size - stdin_offset)) {
+            file_offset += i;
+            stdin_offset = 0;
+
             stdin_size = read(STDIN_FILENO, stdin_buffer, BUFFER_SIZE);
             stdin_total_size += stdin_size;
             printf("STDIN (%d:%d): %s\n", stdin_size, stdin_total_size, stdin_buffer);
+        } else if ((stdin_size - stdin_offset) > (file_size - file_offset)) {
+            file_offset = 0;
+            stdin_offset += i;
+
+            file_size = read(fd, file_buffer, BUFFER_SIZE);
+            file_total_size += file_size;
+            printf("FILEIO (%d:%d): %s\n", file_size, file_total_size, file_buffer);
         } else {
-            for (i=0; i < file_size; i++) {
-                if (stdin_buffer[i] == file_buffer[i]) {
-                    printf("%c=%c", stdin_buffer[i], file_buffer[i]);
-                    similarities++;
-                } else {
-                    differences++;
-                }
-            }
+            file_offset = 0;
+            stdin_offset = 0;
+
             file_size = read(fd, file_buffer, BUFFER_SIZE);
             file_total_size += file_size;
             printf("FILEIO (%d:%d): %s\n", file_size, file_total_size, file_buffer);
@@ -88,6 +78,7 @@ int main (int argc, char *argv[]) {
             printf("STDIN (%d:%d): %s\n", stdin_size, stdin_total_size, stdin_buffer);
         }
     }
+
 
     printf("Wrapping up...\n");
 
@@ -121,7 +112,7 @@ int main (int argc, char *argv[]) {
         return(MAX_SCORE);
     }
 
-    percentage = (similarities * 100) / max(file_total_size, stdin_total_size);
+    percentage = (similarities * 100) / MAX(file_total_size, stdin_total_size);
 
     return(percentage);
 }
