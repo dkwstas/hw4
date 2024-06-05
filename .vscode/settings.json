@@ -3,6 +3,10 @@
         "strings.h": "c",
         "stat.h": "c",
         "stdio.h": "c",
-        "stdlib.h": "c"
+        "stdlib.h": "c",
+        "types.h": "c",
+        "signal.h": "c",
+        "wait.h": "c",
+        "fcntl.h": "c"
     }
 }
