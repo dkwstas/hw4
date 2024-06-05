@@ -199,7 +199,7 @@ int num_warnings (char *filename) {
     return(warning_count);
 }
 
-//Same as above but returns 0 if error is found
+//Same as above but returns 1 if error is found
 int has_error (char *filename) {
     int fd, size;
     const char *ERROR_STRING = "error:";
@@ -231,7 +231,7 @@ int has_error (char *filename) {
                 //Copying the bytes to a temp buffer and comparing it with error string
                 strncpy(temp_buffer, e_position, strlen(ERROR_STRING));
                 if (strcmp(temp_buffer, ERROR_STRING) == 0) {
-                    return(0);
+                    return(1);
                 }
             } else {
                 /*If the error string is not in one piece in the buffer, copy all the bytes
@@ -245,7 +245,7 @@ int has_error (char *filename) {
                 }
                 strncat(temp_buffer, buffer, strlen(ERROR_STRING) - (BUFFER_SIZE - (e_position - buffer)));
                 if (strcmp(temp_buffer, ERROR_STRING) == 0) {
-                    return(0);
+                    return(1);
                 }
             }
         }
@@ -258,7 +258,7 @@ int has_error (char *filename) {
 
     close(fd);
 
-    return(-1);
+    return(0);
 }
 
 //Gets the filename of the source code, removes file extension and returns the new string.
@@ -343,7 +343,7 @@ char **get_filenames (heap_t *heap, char *progname, char *argv[]) {
 }
 
 int main (int argc, char *argv[]) {
-    int fd, p1, p2, p3, warnings, pipefd[2], p1_status = 0, p2_status = 0, p3_status = 0,
+    int fd, p1, p2, p3, warnings, error, pipefd[2], p1_status = 0, p2_status = 0, p3_status = 0,
         timeout = 0, penalties[4] = { 0 };
     char *progname = NULL, *current_dir = NULL, **filenames = NULL;
     heap_t *heap = NULL;
@@ -417,11 +417,19 @@ int main (int argc, char *argv[]) {
     }
 
     //Looking if the generated error file contains errors
-    if (has_error(filenames[ERROR]) != 0) {
+    error = has_error(filenames[ERROR]);
+    if (error == 0) {
         //Counting warnings in the generated error file
         warnings = num_warnings(filenames[ERROR]);
+        if (warnings == -1) {
+            free_heap(heap);
+            return(255);
+        }
         //Calculating penalty based on the number of warnings
         penalties[COMPILATION] = -(warnings * WARNING_PENALTY);
+    } else if (error == -1) {
+        free_heap(heap);
+        return(255);
     } else {
         //Calculating error penalty, printing score overview and quitting
         penalties[COMPILATION] = -MAX_SCORE;
