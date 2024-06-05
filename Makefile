@@ -8,10 +8,10 @@ EXEC = hw4 p4diff
 all: $(EXEC)
 
 hw4: hw4.o
-	$(CC) $(CFLAGS) $< -o $@
+	$(CC) $(CFLAGS) $< -o $@ -fsanitize=address
 
 p4diff: p4diff.o
-	$(CC) $(CFLAGS) $< -o $@
+	$(CC) $(CFLAGS) $< -o $@ -fsanitize=address
 
 hw4.o: hw4.c
 	$(CC) $(CFLAGS) -c $<

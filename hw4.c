@@ -138,8 +138,8 @@ char **read_arguments (char *filename, char *progname) {
 //Gets error file filename, checks if it contains warning and returns the amount of warnings.
 int num_warnings (char *filename) {
     int fd, size, warning_count = 0;
-    char buffer[BUFFER_SIZE + 1];
-    const char *WARNING_STRING = "warning:";
+    const char WARNING_STRING[] = "warning:";
+    char buffer[BUFFER_SIZE + 1], temp_buffer[sizeof(WARNING_STRING)], *w_position = NULL;
 
     //Opening file
     fd = open(filename, O_RDONLY);
@@ -150,6 +150,7 @@ int num_warnings (char *filename) {
 
     //Resetting buffer
     memset(buffer, '\0', sizeof(buffer));
+    memset(temp_buffer, '\0', sizeof(temp_buffer));
 
     //Reading file
     size = read(fd, buffer, BUFFER_SIZE);
@@ -157,29 +158,34 @@ int num_warnings (char *filename) {
         fprintf(stderr, "%s\n", strerror(errno));
         return(-1);
     }
-    while (size != 0) {
+    while (size > 0) {
         //Searching the buffer for the first character of the warning string
-        if (strchr(buffer, WARNING_STRING[0]) != NULL) {
-            //Setting read offset to the character
-            if (lseek(fd, -(size - (strchr(buffer, WARNING_STRING[0]) - buffer)), SEEK_CUR) == -1) {
-                fprintf(stderr, "%s\n", strerror(errno));
-                return(-1);
-            }
-            //Reading the block again and searching for the warning string
-            size = read(fd, buffer, BUFFER_SIZE);
-            if (size == -1) {
-                fprintf(stderr, "%s\n", strerror(errno));
-                return(-1);
-            }
-            //Incrementing warning count if warning is found
-            if (strstr(buffer, WARNING_STRING) != NULL) {
-                warning_count++;
-                //Setting read offset right after the warning string
-                if (lseek(fd, -size + strlen(WARNING_STRING), SEEK_CUR) == -1) {
+        w_position = strchr(buffer, WARNING_STRING[0]);
+        while (w_position != NULL) {
+            //Checking if the warning string is in one piece in the buffer
+            if (strlen(w_position) >= strlen(WARNING_STRING)) {
+                //Copying the bytes to a temp buffer and comparing it with warning string
+                strncpy(temp_buffer, w_position, strlen(WARNING_STRING));
+                if (strcmp(temp_buffer, WARNING_STRING) == 0) {
+                    warning_count++;
+                }
+            } else {
+                /*If the warning string is not in one piece in the buffer, copy all the bytes
+                *after w_position in themp buffer, read and add the remaining to the temp buffer
+                */
+                strcpy(temp_buffer, w_position);
+                size = read(fd, buffer, BUFFER_SIZE);
+                if (size == -1) {
                     fprintf(stderr, "%s\n", strerror(errno));
                     return(-1);
                 }
+                strncat(temp_buffer, buffer, strlen(WARNING_STRING) - (BUFFER_SIZE - (w_position - buffer)));
+                if (strcmp(temp_buffer, WARNING_STRING) == 0) {
+                    warning_count++;
+                }
             }
+            //Checking if tere are two warning strings in the same buffer
+            w_position = strchr(w_position + 1, WARNING_STRING[0]);
         }
         size = read(fd, buffer, BUFFER_SIZE);
         if (size == -1) {
@@ -196,8 +202,8 @@ int num_warnings (char *filename) {
 //Same as above but returns 0 if error is found
 int has_error (char *filename) {
     int fd, size;
-    char buffer[BUFFER_SIZE + 1];
     const char *ERROR_STRING = "error:";
+    char buffer[BUFFER_SIZE + 1], temp_buffer[sizeof(ERROR_STRING)], *e_position = NULL;
 
     //Opening file
     fd = open(filename, O_RDONLY);
@@ -208,6 +214,7 @@ int has_error (char *filename) {
 
     //Resetting buffer
     memset(buffer, '\0', sizeof(buffer));
+    memset(temp_buffer, '\0', sizeof(temp_buffer));
 
     //Reading file
     size = read(fd, buffer, BUFFER_SIZE);
@@ -215,22 +222,31 @@ int has_error (char *filename) {
         fprintf(stderr, "%s\n", strerror(errno));
         return(-1);
     }
-    while (size != 0) {
+    while (size > 0) {
         //Searching the buffer for the first character of the error string
-        if (strchr(buffer, ERROR_STRING[0]) != NULL) {
-            //Setting read offset to the character
-            if (lseek(fd, -(size - (strchr(buffer, ERROR_STRING[0]) - buffer)), SEEK_CUR) == -1) {
-                fprintf(stderr, "%s\n", strerror(errno));
-                return(-1);
-            }
-            //Reading the block again and searching for the warning string
-            size = read(fd, buffer, BUFFER_SIZE);
-            if (size == -1) {
-                fprintf(stderr, "%s\n", strerror(errno));
-                return(-1);
-            }
-            if (strstr(buffer, ERROR_STRING) != NULL) {
-                return(0);
+        e_position = strchr(buffer, ERROR_STRING[0]);
+        if (e_position != NULL) {
+            //Checking if the error string is in one piece in the buffer
+            if (strlen(e_position) >= strlen(ERROR_STRING)) {
+                //Copying the bytes to a temp buffer and comparing it with error string
+                strncpy(temp_buffer, e_position, strlen(ERROR_STRING));
+                if (strcmp(temp_buffer, ERROR_STRING) == 0) {
+                    return(0);
+                }
+            } else {
+                /*If the error string is not in one piece in the buffer, copy all the bytes
+                *after e_position in temp buffer, read and add the remaining to the temp buffer
+                */
+                strcpy(temp_buffer, e_position);
+                size = read(fd, buffer, BUFFER_SIZE);
+                if (size == -1) {
+                    fprintf(stderr, "%s\n", strerror(errno));
+                    return(-1);
+                }
+                strncat(temp_buffer, buffer, strlen(ERROR_STRING) - (BUFFER_SIZE - (e_position - buffer)));
+                if (strcmp(temp_buffer, ERROR_STRING) == 0) {
+                    return(0);
+                }
             }
         }
         size = read(fd, buffer, BUFFER_SIZE);
