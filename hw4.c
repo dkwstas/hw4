@@ -61,7 +61,7 @@ void print_score (int penalties[4]) {
     total_score = MAX(0, penalties[COMPILATION] + penalties[TERMINATION] + penalties[DIFFERENCE] +
             penalties[MEMORY]);
 
-    printf("\nCompilation: %d\nTermination: %d\nOutput: %d\nMemory access: %d\nScore: %d\n",
+    printf("\nCompilation: %d\n\nTermination: %d\n\nOutput: %d\n\nMemory access: %d\n\nScore: %d\n",
             penalties[COMPILATION], penalties[TERMINATION], penalties[DIFFERENCE],
             penalties[MEMORY], total_score);
 }
@@ -563,6 +563,11 @@ int main (int argc, char *argv[]) {
     //Checking if p3 is interrupted by signal
     if (waitpid(p3, &p3_status, 0) == -1) {
         kill(p3, SIGKILL);
+        free_heap(heap);
+        return(255);
+    }
+
+    if (WEXITSTATUS(p3_status) == 255) {
         free_heap(heap);
         return(255);
     }
