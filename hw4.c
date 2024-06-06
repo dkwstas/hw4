@@ -21,6 +21,8 @@
 #define MAX_SCORE 100
 #define WARNING_PENALTY 5
 #define MEMORY_PENALTY 15
+#define WARNING_STRING "warning:"
+#define ERROR_STRING "error:"
 
 #define MAX(A, B) ((A > B) ? A : B)
 
@@ -43,6 +45,11 @@ typedef struct {
     int heap_size;
     void **heap_array;
 } heap_t;
+
+typedef struct {
+    int errors;
+    int warnings;
+} err_contents_t;
 
 //Alarm signal handler
 static void timer_handler (int signal) {}
@@ -135,17 +142,20 @@ char **read_arguments (char *filename, char *progname) {
     return(argv);
 }
 
-//Gets error file filename, checks if it contains warning and returns the amount of warnings.
-int num_warnings (char *filename) {
-    int fd, size, warning_count = 0;
-    const char WARNING_STRING[] = "warning:";
-    char buffer[BUFFER_SIZE + 1], *err_file = NULL, *w_position = NULL;
+/*Gets an array of filenames, checks and counts the amount of errors-warnings in the file.
+ *Returns pointer to a struct of err_contents_t that contains the data.
+ */
+err_contents_t *err_file_data (char **filenames) {
+    int fd, size, i, num_tokens = 0, error_count = 0, warning_count = 0;
+    char buffer[BUFFER_SIZE + 1], *err_file = NULL, *e_position = NULL, *w_position = NULL,
+         **tokens = NULL, *token = NULL;
+    err_contents_t *error_contents = NULL;
 
     //Opening file
-    fd = open(filename, O_RDONLY);
+    fd = open(filenames[ERROR], O_RDONLY);
     if (fd == -1) {
         fprintf(stderr, "%s\n", strerror(errno));
-        return(-1);
+        return(NULL);
     }
 
     //Resetting buffer
@@ -158,7 +168,7 @@ int num_warnings (char *filename) {
     size = read(fd, buffer, BUFFER_SIZE);
     if (size == -1) {
         fprintf(stderr, "%s\n", strerror(errno));
-        return(-1);
+        return(NULL);
     }
     while (size > 0) {
         err_file = (char *)realloc(err_file, (strlen(err_file) + size + 1) * sizeof(char));
@@ -167,84 +177,59 @@ int num_warnings (char *filename) {
         size = read(fd, buffer, BUFFER_SIZE);
         if (size == -1) {
             fprintf(stderr, "%s\n", strerror(errno));
-            return(-1);
+            return(NULL);
         }
     }
     err_file[strlen(err_file)] = '\0';
 
-    //Counting warnings
-    w_position = strstr(err_file, WARNING_STRING);
-    while (w_position != NULL) {
-        warning_count++;
-        w_position = strstr(w_position + 1, WARNING_STRING);
+    //Converting each line to a token
+    token = strtok(err_file, "\n");
+    for (i=0; token != NULL; i++) {
+        tokens = (char **)realloc(tokens, (i + 1) * sizeof(char *));
+        malloc_check(tokens);
+        tokens[i] = strdup(token);
+        token = strtok(NULL, "\n");
+    }
+    num_tokens = i;
+
+    //Looping through each token and checking if it begins with the filename of source code
+    for (i=0; i < num_tokens; i++) {
+        if (strncmp(tokens[i], filenames[SOURCE], strlen(filenames[SOURCE])) == 0) {
+            //Searching for errors/warnings and counting them
+            e_position = strstr(tokens[i], ERROR_STRING);
+            w_position = strstr(tokens[i], WARNING_STRING);
+            if ((e_position != NULL && w_position != NULL) && (e_position - w_position < 0)) {
+                error_count++;
+            } else if ((e_position != NULL && w_position != NULL) &&
+                    (e_position - w_position > 0)) {
+                warning_count++;
+            } else if (e_position != NULL && w_position == NULL) {
+                error_count++;
+            } else if (e_position == NULL && w_position != NULL) {
+                warning_count++;
+            }
+        }
     }
 
+    //Creating the struct
+    error_contents = (err_contents_t *)malloc(sizeof(err_contents_t));
+    error_contents->errors = error_count;
+    error_contents->warnings = warning_count;
+
+    //Freeing memory
     free(err_file);
+    for (i=0; i < num_tokens; i++) {
+        free(tokens[i]);
+    }
+    free(tokens);
 
     if (close(fd) == -1) {
         fprintf(stderr, "%s\n", strerror(errno));
-        return(-1);
+        free(error_contents);
+        return(NULL);
     }
 
-    return(warning_count);
-}
-
-//Same as above but returns 1 if error is found
-int has_error (char *filename) {
-    int fd, size;
-    const char *ERROR_STRING = "error:";
-    char buffer[BUFFER_SIZE + 1], *err_file = NULL, *e_position = NULL;
-
-    //Opening file
-    fd = open(filename, O_RDONLY);
-    if (fd == -1) {
-        fprintf(stderr, "%s\n", strerror(errno));
-        return(-1);
-    }
-
-    //Resetting buffer
-    memset(buffer, '\0', sizeof(buffer));
-    err_file = (char *)malloc(sizeof(char));
-    malloc_check(err_file);
-    err_file[0] = '\0';
-
-    //Reading file
-    size = read(fd, buffer, BUFFER_SIZE);
-    if (size == -1) {
-        fprintf(stderr, "%s\n", strerror(errno));
-        return(-1);
-    }
-    while (size > 0) {
-        err_file = (char *)realloc(err_file, (strlen(err_file) + size + 1) * sizeof(char));
-        malloc_check(err_file);
-        err_file = strncat(err_file, buffer, size);
-        size = read(fd, buffer, BUFFER_SIZE);
-        if (size == -1) {
-            fprintf(stderr, "%s\n", strerror(errno));
-            return(-1);
-        }
-    }
-    err_file[strlen(err_file)] = '\0';
-
-    //Searching for error
-    e_position = strstr(err_file, ERROR_STRING);
-    if (e_position != NULL) {
-        free(err_file);
-        if (close(fd) == -1) {
-            fprintf(stderr, "%s\n", strerror(errno));
-            return(-1);
-        }
-        return(1);
-    }
-
-    free(err_file);
-
-    if (close(fd) == -1) {
-        fprintf(stderr, "%s\n", strerror(errno));
-        return(-1);
-    }
-
-    return(0);
+    return(error_contents);
 }
 
 //Gets the filename of the source code, removes file extension and returns the new string.
@@ -329,12 +314,13 @@ char **get_filenames (heap_t *heap, char *progname, char *argv[]) {
 }
 
 int main (int argc, char *argv[]) {
-    int fd, p1, p2, p3, warnings, error, pipefd[2], p1_status = 0, p2_status = 0, p3_status = 0,
+    int fd, p1, p2, p3, pipefd[2], p1_status = 0, p2_status = 0, p3_status = 0,
         timeout = 0, penalties[4] = { 0 };
     char *progname = NULL, *current_dir = NULL, **filenames = NULL;
     heap_t *heap = NULL;
     struct itimerval timer;
     struct sigaction action;
+    err_contents_t *error_contents = NULL;
 
     //Checking if the program has received the required arguments to run
     if (argc != 6 || atoi(argv[5]) < 0) {
@@ -403,23 +389,20 @@ int main (int argc, char *argv[]) {
     }
 
     //Looking if the generated error file contains errors
-    error = has_error(filenames[ERROR]);
-    if (error == 0) {
-        //Counting warnings in the generated error file
-        warnings = num_warnings(filenames[ERROR]);
-        if (warnings == -1) {
-            free_heap(heap);
-            return(255);
-        }
-        //Calculating penalty based on the number of warnings
-        penalties[COMPILATION] = -(warnings * WARNING_PENALTY);
-    } else if (error == -1) {
+    error_contents = err_file_data(filenames);
+    if (error_contents == NULL) {
         free_heap(heap);
         return(255);
+    }
+    if (error_contents->errors == 0) {
+        //Calculating penalty based on the number of warnings
+        penalties[COMPILATION] = -((error_contents->warnings) * WARNING_PENALTY);
+        free(error_contents);
     } else {
         //Calculating error penalty, printing score overview and quitting
         penalties[COMPILATION] = -MAX_SCORE;
         print_score(penalties);
+        free(error_contents);
         free_heap(heap);
         return(0);
     }
