@@ -7,6 +7,8 @@
         "types.h": "c",
         "signal.h": "c",
         "wait.h": "c",
-        "fcntl.h": "c"
+        "fcntl.h": "c",
+        "unistd.h": "c",
+        "time.h": "c"
     }
 }

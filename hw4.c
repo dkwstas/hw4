@@ -324,8 +324,8 @@ int main (int argc, char *argv[]) {
 
     //Checking if the program has received the required arguments to run
     if (argc != 6 || atoi(argv[5]) < 0) {
-        fprintf(stderr, "Invalid arguments.\n Usage: ./hw4 <progname>.c <progname>.args \
-                <progname>.in <progname>.out <timeout>\n");
+        fprintf(stderr, "Invalid arguments.\n Usage: ./hw4 <progname>.c <progname>.args "
+                "<progname>.in <progname>.out <timeout>\n");
         return(1);
     }
 

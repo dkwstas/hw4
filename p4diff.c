@@ -1,14 +1,12 @@
 /* Output difference finder for C program autograder
    Author: KONSTANTINOS DRAKONTIDIS
  */
-
 #include <stdio.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <string.h>
-#include <sys/stat.h>
 #include <errno.h>
-#include <math.h>
+#include <stdlib.h>
 
 #define BUFFER_SIZE 64
 #define MAX_SCORE 100
@@ -16,134 +14,104 @@
 #define MAX(A, B) ((A > B) ? A : B)
 #define MIN(A, B) ((A < B) ? A : B)
 
+//Gets a memory address and checks if malloc is successful. Returns nothing.
+void malloc_check (void *address) {
+    if (address == NULL) {
+        exit(255);
+    }
+}
+
+/*Gets a file descriptor and a buffer, fills the whole buffer with data (if possible) from fd. 
+ *Returns the amount of data written in the buffer, 255 on error.
+ */
+int update_buffer (int fd, char buffer[BUFFER_SIZE + 1]) {
+    int size = 0, total_size = 0;
+    char *temp_buffer = NULL;
+
+    //Resetting the buffer
+    memset(buffer, '\0', BUFFER_SIZE + 1);
+
+    //Reading from fd
+    size = read(fd, buffer, BUFFER_SIZE);
+    //Exception handling
+    if (size == -1) {
+        fprintf(stderr, "%s\n", strerror(errno));
+        return(255);
+    }
+    total_size += size;
+    //Reading until the buffer is full
+    while (size != 0 && total_size < BUFFER_SIZE) {
+        //Creating a temp buffer to store new data
+        temp_buffer = (char *)realloc(temp_buffer, (BUFFER_SIZE - total_size + 1) * sizeof(char));
+        malloc_check(temp_buffer);
+        temp_buffer = (char *)memset(temp_buffer, '\0',
+                (BUFFER_SIZE - total_size + 1) * sizeof(char));
+        size = read(fd, temp_buffer, BUFFER_SIZE - total_size);
+        if (size == -1) {
+            fprintf(stderr, "%s\n", strerror(errno));
+            return(255);
+        }
+        total_size += size;
+        //Copying data over to main buffer from temp buffer
+        strcat(buffer, temp_buffer);
+    }
+
+    free(temp_buffer);
+
+    return(total_size);
+}
+
 int main (int argc, char *argv[]) {
-    int i, fd, stdin_size, file_size, stdin_total_size = 0, file_total_size = 0,
-        similarities = 0, differences = 0, stdin_offset = 0, file_offset = 0, percentage = 0;
-    char *filename = NULL, stdin_buffer[BUFFER_SIZE + 1], file_buffer[BUFFER_SIZE + 1];
+    int i, fd, similarities = 0, differences = 0, stdin_size = 0, file_size = 0,
+        total_stdin_size = 0, total_file_size = 0, percentage = 0;
+    char stdin_buffer[BUFFER_SIZE + 1], file_buffer[BUFFER_SIZE + 1];
 
     //Checking if the program has received the required arguments to run
     if (argc != 2) {
-        printf("Invalid arguments.\n");
-        return(-1);
+        fprintf(stderr, "Invalid arguments.\n");
+        return(255);
     }
 
-    //Clearing file buffer and stdin buffer
-    filename = argv[1];
-    memset(stdin_buffer, '\0', BUFFER_SIZE + 1);
-    memset(file_buffer, '\0', BUFFER_SIZE + 1);
-
     //Opening file
-    fd = open(filename, O_RDONLY);
+    fd = open(argv[1], O_RDONLY);
     if (fd == -1) {
         fprintf(stderr, "%s\n", strerror(errno));
         return(255);
     }
 
-    //Reading a block of BUFFER_SIZE from each file descriptor
-    file_size = read(fd, file_buffer, BUFFER_SIZE);
-    if (file_size == -1) {
-        fprintf(stderr, "%s\n", strerror(errno));
-        return(255);
-    }
-    file_total_size += file_size;
-
-    stdin_size = read(STDIN_FILENO, stdin_buffer, BUFFER_SIZE);
-    if (stdin_size == -1) {
-        fprintf(stderr, "%s\n", strerror(errno));
-        return(255);
-    }
-    stdin_total_size += stdin_size;
-    //Read until one file descriptor stops providing data
-    while (file_size > 0 && stdin_size > 0) {
-        /*Checking which buffer contains less "new" data and comparing its bytes with
-         *the other one after its last offset
-         */
-        for (i=0; i < MIN(file_size - file_offset, stdin_size - stdin_offset); i++) {
-            if (stdin_buffer[stdin_offset + i] == file_buffer[file_offset + i]) {
+    //Attempting to read data from file descriptors
+    stdin_size = update_buffer(STDIN_FILENO, stdin_buffer);
+    file_size = update_buffer(fd, file_buffer);
+    total_stdin_size += stdin_size;
+    total_file_size += file_size;
+    //Comparing the two buffers
+    while (stdin_size != 0 || file_size != 0) {
+        for (i=0; i < MIN(stdin_size, file_size); i++) {
+            if (stdin_buffer[i] == file_buffer[i]) {
                 similarities++;
             } else {
                 differences++;
             }
         }
 
-        //If stdin had less "new" data, read from stdin and set new offset to file
-        if ((file_size - file_offset) > (stdin_size - stdin_offset)) {
-            file_offset += i;
-            stdin_offset = 0;
-
-            stdin_size = read(STDIN_FILENO, stdin_buffer, BUFFER_SIZE);
-            if (stdin_size == -1) {
-                fprintf(stderr, "%s\n", strerror(errno));
-                return(255);
-            }
-            stdin_total_size += stdin_size;
-            //If file had less "new" data, read from file and set new offset to stdin
-        } else if ((stdin_size - stdin_offset) > (file_size - file_offset)) {
-            file_offset = 0;
-            stdin_offset += i;
-
-            file_size = read(fd, file_buffer, BUFFER_SIZE);
-            if (file_size == -1) {
-                fprintf(stderr, "%s\n", strerror(errno));
-                return(255);
-            }
-            file_total_size += file_size;
-            //If both had the same amount of data, read from file and stdin
-        } else {
-            file_offset = 0;
-            stdin_offset = 0;
-
-            file_size = read(fd, file_buffer, BUFFER_SIZE);
-            if (file_size == -1) {
-                fprintf(stderr, "%s\n", strerror(errno));
-                return(255);
-            }
-            file_total_size += file_size;
-
-            stdin_size = read(STDIN_FILENO, stdin_buffer, BUFFER_SIZE);
-            if (stdin_size == -1) {
-                fprintf(stderr, "%s\n", strerror(errno));
-                return(255);
-            }
-            stdin_total_size += stdin_size;
-        }
+        stdin_size = update_buffer(STDIN_FILENO, stdin_buffer);
+        file_size = update_buffer(fd, file_buffer);
+        total_stdin_size += stdin_size;
+        total_file_size += file_size;
     }
 
-    //Attempting to read data that was left behind (outputs were not equal size)
-    file_size = read(fd, file_buffer, BUFFER_SIZE);
-    if (file_size == -1) {
+    if (close(fd) == -1) {
         fprintf(stderr, "%s\n", strerror(errno));
         return(255);
     }
-    file_total_size += file_size;
-    while (file_size > 0) {
-        file_size = read(fd, file_buffer, BUFFER_SIZE);
-        if (file_size == -1) {
-            fprintf(stderr, "%s\n", strerror(errno));
-            return(255);
-        }
-        file_total_size += file_size;
-    }
-    stdin_size = read(STDIN_FILENO, stdin_buffer, BUFFER_SIZE);
-    if (stdin_size == -1) {
-        fprintf(stderr, "%s\n", strerror(errno));
-        return(255);
-    }
-    stdin_total_size += stdin_size;
-    while (stdin_size > 0) {
-        stdin_size = read(STDIN_FILENO, stdin_buffer, BUFFER_SIZE);
-        if (stdin_size == -1) {
-            fprintf(stderr, "%s\n", strerror(errno));
-            return(255);
-        }
-        stdin_total_size += stdin_size;
-    }
 
-    if (file_total_size == 0 && stdin_total_size == 0) {
+    //Calculating and returning the score
+
+    if (total_file_size == 0 && total_stdin_size == 0) {
         return(MAX_SCORE);
     }
 
-    percentage = (similarities * 100) / MAX(file_total_size, stdin_total_size);
+    percentage = (similarities * 100) / MAX(total_file_size, total_stdin_size);
 
     return(percentage);
 }
